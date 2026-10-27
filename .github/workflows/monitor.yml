@@ -1,0 +1,43 @@
+name: Мониторинг записи
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # каждые 5 минут (GitHub иногда запускает с задержкой)
+  workflow_dispatch:         # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write            # чтобы сохранять state.json (что уже было свободно)
+
+concurrency:
+  group: reservio-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка
+        run: pip install -r requirements.txt
+
+      - name: Проверка свободных окон
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          STAFF: ${{ vars.STAFF }}
+          SERVICE_ID: ${{ vars.SERVICE_ID }}
+        run: python monitor.py
+
+      - name: Сохранение состояния
+        if: always()
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "monitor-bot@users.noreply.github.com"
+          git add state.json || true
+          git diff --cached --quiet || (git commit -q -m "state: $(date -u +%FT%TZ)" && git pull -q --rebase && git push -q)
